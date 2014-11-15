@@ -3,8 +3,11 @@
 #include <getopt.h>
 #include <stdlib.h>
 #include <cmath>
+#include <pthread.h>
 std::vector<std::vector<double> > phi;
 std::vector<int> condition;
+static int THREADS, X_SIZE;
+pthread_barrier_t bar;
 
 void print_matrix(std::vector<std::vector<double> > v) {
     for(int i = 0; i < v.size(); i++) {
@@ -57,6 +60,14 @@ std::vector<double> check_solution(std::vector<std::vector<double> >A , std::vec
     return diff;
 }
 
+void * calc(void *thread) {
+    long t = (long) thread;
+    int start_index = t * (X_SIZE / THREADS) + (t == 0? 0 : 1);
+    int end_index = (t != THREADS - 1)?(t + 1) * (X_SIZE / THREADS) : X_SIZE;
+    std::cout << "I am thread " << t << ". My start index: " << start_index << ". My end index: " << end_index << std::endl;
+    pthread_exit(NULL);
+}
+
 int main(int argc, char **argv) {
     int time_to_modulate;
     int num_threads;
@@ -66,16 +77,21 @@ int main(int argc, char **argv) {
     double C = 1e-6;
     double R = 10;
     double delta_t = 1e-5;
-    x_grid = 2;
-    y_grid = 2;
-    num_threads = 2;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    x_grid = 100;
+    y_grid = 15;
+    num_threads = 3;
+    THREADS = num_threads;
     time_to_modulate = 2;
+    X_SIZE = x_grid;
     phi.resize(x_grid);
     condition.resize(x_grid);
     for(int i = 0; i < phi.size(); i++) {
         phi[i].resize(y_grid);
     }
-    std::vector<std::vector<double> > A;
+    /*std::vector<std::vector<double> > A;
     std::vector<double> B, X;
     int size = atoi(argv[1]);;
     A.resize(size);
@@ -83,7 +99,18 @@ int main(int argc, char **argv) {
         A[i].resize(size);
     }
     B.resize(size);
-    for(int i = 0; i < A.size(); i++) {
+    */
+    pthread_barrier_init(&bar, NULL, THREADS);
+    pthread_t *threads = new pthread_t[THREADS];
+    for (long i = 0; i < THREADS; i++) {
+        if (pthread_create(&threads[i], NULL, calc, (void *)i) != 0) {
+            std::cout << "Can't create thread " << i << std::endl;
+        }
+    }
+    for (int i = 0; i < THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+    /*for(int i = 0; i < A.size(); i++) {
         if(i - 1 >=0)
             A[i][i-1] = (double)rand() / RAND_MAX;
         A[i][i] = (double)rand() / RAND_MAX;
@@ -100,7 +127,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < check.size(); i++) {
         if (fabs(check[i]) > 1e-10)
             std::cout << "ERROR TOO BIG" << check[i] << std::endl;
-    }
+    }*/
     //print_matrix(check_solution(A, X, B));
     /*while (1) {
         const struct option long_options[] = {
