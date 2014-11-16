@@ -6,6 +6,9 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
+#include <fstream>
+
+std::ofstream out("data.out", std::ofstream::out | std::ofstream::trunc);
 typedef std::vector<std::vector<double> > matrix;
 typedef std::vector<double> row;
 std::vector<std::vector<double> > phi, I;
@@ -13,7 +16,7 @@ std::vector<int> condition;
 static int THREADS, X_SIZE, Y_SIZE;
 pthread_barrier_t bar, syn;
 pthread_mutex_t lock;
-static double R = 10, C = 1e-6, dt, T;
+static double R = 1, C = 1e-1, dt, T;
 long long clock_time() {
     return time(NULL);
 }
@@ -21,7 +24,7 @@ void print_matrix(const matrix &v) {
 
     for(int i = 0; i < v.size(); i++) {
         for(int j = 0; j < v[i].size(); j++) {
-            std::cout << v[i][j] << " ";
+            std::cout << v[j][i] << " ";
         }
         std::cout << std::endl;
     }
@@ -71,20 +74,30 @@ row check_solution(const matrix &A , const row &X, const row &B) {
 
 row solve(const row &left,const row &mid,const row &right, int j) {
     int size = left.size();
+    double pt, bt;
     row B(size);
     matrix A(size, row(size));
     //std::cout << left.size() << " " << mid.size() << " " << right.size() << std::endl;
     for(int i = 0; i < A.size(); i++) {
         if(i - 1 >=0)
-            A[i][i-1] = -1;
-        A[i][i] = 2;
-        
+            A[i][i-1] = 1;
+        A[i][i] = -2;
         if(i + 1 < A.size())
-            A[i][i+1] = -1;
-        B[i] = (left[i] - 2 * mid[i] + right[i]) * (dt / (R * C) - 1) + I[j][i] * dt / C ;
+            A[i][i+1] = 1;
+        if(i == 0)
+            pt = 0;
+        else
+            pt = mid[i-1];
+        if (i == A.size() - 1)
+            bt = 0;
+        else 
+            bt = mid[i+1];
+        B[i] = (-left[i] + 2 * mid[i] - right[i]) * dt /(R * C) + (pt - 2 * mid[i] + bt) + I[j][i] * dt/C;//(left[i] - 2 * mid[i] + right[i]) * (dt / (R * C) - 1) + I[j][i] * dt / C ;
     }
-    //print_matrix(A);
     row s = solve_progon(A, B);
+    /*print_matrix(A);
+    print_matrix(B);
+    print_matrix(s);*/
     /*row check = check_solution(A, s, B);
     for (int i = 0; i < check.size(); i++) {
         if (fabs(check[i]) > 1e-10)
@@ -107,6 +120,9 @@ void * calc(void *thread) {
     std::cout << "I am thread " << t << ". My start index: " << start_index << ". My end index: " << end_index << std::endl;
     unsigned long long start = clock_time();
     while (cur_time < T) {
+    //for(int i = 0; i < 20; i ++) {
+        //print_matrix(phi);
+        out << cur_time << " " << phi[1][1] << std::endl;
         /*if (start_index == 0) {
             local.push_back(zeros);
         } else {
@@ -135,7 +151,6 @@ void * calc(void *thread) {
             else 
                 next.push_back(solve(phi[i - 1], phi[i], phi[i + 1], i - start_index));
         }
-        cur_time += dt;
         pthread_barrier_wait(&bar);
         for (int i = start_index; i <=end_index; i++) {
             phi[i] = next[i - start_index];
@@ -154,7 +169,7 @@ int main(int argc, char **argv) {
     int x_grid, y_grid;
     const char* short_options = "tpxy";
     int c;
-    T = 2;
+    T = 20;
     dt = 1e-5;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -169,15 +184,13 @@ int main(int argc, char **argv) {
     phi.resize(x_grid);
     for(int i = 0; i < phi.size(); i++) {
         phi[i].resize(y_grid);
-        for (int j = 0; j < phi[i].size(); j++) 
-            phi[i][j] = (double) rand() / RAND_MAX;
     }
     I.resize(x_grid);
     for(int i = 0; i < I.size(); i++) {
         I[i].resize(y_grid);
     }
-    I[1][1] = 10;
-    pthread_barrier_init(&bar, NULL, THREADS);
+    I[1][1] = 1;
+    I[0][1] = -1;
     pthread_barrier_init(&syn, NULL, THREADS);
     pthread_mutex_init(&lock, NULL);
     /*std::vector<std::vector<double> > A;

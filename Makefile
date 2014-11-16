@@ -1,5 +1,5 @@
 DEBUG=-Wall -g -DDEBUG
-LDFLAGS=-g -lpthread
+LDFLAGS=-g -lpthread -O3
 BINS=calc
 CC=g++
 FILE=main.cpp 
