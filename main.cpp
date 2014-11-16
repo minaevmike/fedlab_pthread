@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include <iostream>
 #include <vector>
 #include <getopt.h>
@@ -6,6 +7,8 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
+#include <QDateTime>
+#include <QDebug>
 typedef std::vector<std::vector<double> > matrix;
 typedef std::vector<double> row;
 std::vector<std::vector<double> > phi, I;
@@ -30,7 +33,7 @@ void print_matrix(const matrix &v) {
 }
 
 void print_matrix(const row &v) {
-    for(int i = 0; i < v.size(); i++){ 
+    for(int i = 0; i < v.size(); i++){
         std::cout << v[i] << std::endl;
     }
 }
@@ -80,7 +83,7 @@ row solve(const row &left,const row &mid,const row &right, int j) {
         if(i - 1 >=0)
             A[i][i-1] = -1;
         A[i][i] = 2;
-        
+
         if(i + 1 < A.size())
             A[i][i+1] = -1;
         B[i] = (left[i] - 2 * mid[i] + right[i]) * (dt / (R * C) - 1) + I[j][i] * dt / C ;
@@ -97,7 +100,7 @@ row solve(const row &left,const row &mid,const row &right, int j) {
 
 void * calc(void *thread) {
     long t = (long) thread;
-    int start_index = t * (X_SIZE / THREADS); 
+    int start_index = t * (X_SIZE / THREADS);
     int end_index = (t != THREADS - 1)?(t + 1) * (X_SIZE / THREADS) - 1: X_SIZE - 1;
     matrix local, next;
     row zeros;
@@ -126,11 +129,11 @@ void * calc(void *thread) {
         //print_matrix(local);
         //std::cout << local.size() << std::endl;
         for (int i = start_index; i <= end_index; i ++) {
-            if (i == start_index && start_index == 0) 
+            if (i == start_index && start_index == 0)
                 next.push_back(solve(zeros, phi[i], phi[i + 1], i - start_index));
-            else if (i == end_index && end_index == X_SIZE - 1) 
+            else if (i == end_index && end_index == X_SIZE - 1)
                 next.push_back(solve(phi[i - 1], phi[i], zeros, i - start_index));
-            else 
+            else
                 next.push_back(solve(phi[i - 1], phi[i], phi[i + 1], i - start_index));
         }
         cur_time += dt;
@@ -144,7 +147,11 @@ void * calc(void *thread) {
     pthread_exit(NULL);
 }
 
-int main(int argc, char **argv) {
+
+int main(int argc, char *argv[])
+{
+    QCoreApplication a(argc, argv);
+    qint64 temp = QDateTime::currentMSecsSinceEpoch();
     int time_to_modulate;
     int num_threads;
     int x_grid, y_grid;
@@ -165,7 +172,7 @@ int main(int argc, char **argv) {
     phi.resize(x_grid);
     for(int i = 0; i < phi.size(); i++) {
         phi[i].resize(y_grid);
-        for (int j = 0; j < phi[i].size(); j++) 
+        for (int j = 0; j < phi[i].size(); j++)
             phi[i][j] = (double) rand() / RAND_MAX;
     }
     I.resize(x_grid);
@@ -197,55 +204,7 @@ int main(int argc, char **argv) {
         pthread_join(threads[i], NULL);
     }
     std::cout << "It takes " << (double)(clock_time() - start) / 1e9 << std::endl;
-    /*for(int i = 0; i < A.size(); i++) {
-        if(i - 1 >=0)
-            A[i][i-1] = (double)rand() / RAND_MAX;
-        A[i][i] = (double)rand() / RAND_MAX;
-        
-        if(i + 1 < A.size())
-            A[i][i+1] = (double)rand() / RAND_MAX;
-        B[i] = (double)rand() / RAND_MAX;
-        
-    }
-    //print_matrix(A);
-    //print_matrix(B);
-    X = solve_progon(A, B);
-    std::vector<double> check = check_solution(A,X,B);
-    for (int i = 0; i < check.size(); i++) {
-        if (fabs(check[i]) > 1e-10)
-            std::cout << "ERROR TOO BIG" << check[i] << std::endl;
-    }*/
-    //print_matrix(check_solution(A, X, B));
-    /*while (1) {
-        const struct option long_options[] = {
-            {"delta_t", required_argument, 0, 0},
-            {"threads", required_argument, 0, 0},
-            {"x_size", required_argument, 0, 0},
-            {"y_size", required_argument, 0, 0},
-            {NULL, 0, NULL, 0}
-        };
-        int index = 0;
-        c = getopt_long(argc, argv, "t:p:x:y:", long_options, &index);
-        if (c == -1)
-            break;
-        std::cout << c << " " << optarg << std::endl;
-        switch (c) {
-            case 't':
-                delta_t = atoi(optarg);
-                break;
-            case 'p':
-                num_threads = atoi(optarg);
-                break;
-            case 'x':
-                x_grid = atoi(optarg);
-                break;
-            case 'y':
-                y_grid = atoi(optarg);
-                break;
-        }
-    }
-    std::cout << delta_t << " " << num_threads << " " << x_grid << " " << y_grid<< std::endl;*/
-
-    return 0;
+    temp =  QDateTime::currentMSecsSinceEpoch() - temp;
+    qDebug()<< temp;
+    return a.exec();
 }
-
