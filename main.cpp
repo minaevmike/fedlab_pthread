@@ -6,7 +6,8 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
-
+typedef std::vector<std::vector<double> > matrix;
+typedef std::vector<double> row;
 std::vector<std::vector<double> > phi, I;
 std::vector<int> condition;
 static int THREADS, X_SIZE, Y_SIZE;
@@ -18,7 +19,7 @@ long long clock_time() {
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tp);
     return (long long)(tp.tv_nsec + (long long)tp.tv_sec * 1000000000ll);
 }
-void print_matrix(std::vector<std::vector<double> > v) {
+void print_matrix(const matrix &v) {
 
     for(int i = 0; i < v.size(); i++) {
         for(int j = 0; j < v[i].size(); j++) {
@@ -28,14 +29,14 @@ void print_matrix(std::vector<std::vector<double> > v) {
     }
 }
 
-void print_matrix(std::vector<double> v) {
+void print_matrix(const row &v) {
     for(int i = 0; i < v.size(); i++){ 
         std::cout << v[i] << std::endl;
     }
 }
 
-std::vector<double> solve_progon(std::vector<std::vector<double> > A, std::vector <double> B) {
-    std::vector<double> P, Q, ans;
+row solve_progon(const matrix &A,const row &B) {
+    row P, Q, ans;
     int N = B.size();
     P.resize(N);
     Q.resize(N);
@@ -56,8 +57,8 @@ std::vector<double> solve_progon(std::vector<std::vector<double> > A, std::vecto
     return ans;
 }
 
-std::vector<double> check_solution(std::vector<std::vector<double> >A , std::vector<double> X, std::vector<double> B) {
-    std::vector<double> diff;
+row check_solution(const matrix &A , const row &X, const row &B) {
+    row diff;
     diff.resize(B.size());
     int size = B.size();
     for(int i = 0; i < size; i++) {
@@ -70,16 +71,11 @@ std::vector<double> check_solution(std::vector<std::vector<double> >A , std::vec
     return diff;
 }
 
-std::vector<double> solve(std::vector<double> left, std::vector<double> mid, std::vector<double> right, int j) {
+row solve(const row &left,const row &mid,const row &right, int j) {
     int size = left.size();
-    std::vector<double> B;
-    std::vector<std::vector<double> > A;
-    A.resize(size);
-    B.resize(size);
+    row B(size);
+    matrix A(size, row(size));
     //std::cout << left.size() << " " << mid.size() << " " << right.size() << std::endl;
-    for(int i = 0; i < A.size(); i++) {
-        A[i].resize(size);
-    }
     for(int i = 0; i < A.size(); i++) {
         if(i - 1 >=0)
             A[i][i-1] = -1;
@@ -90,8 +86,8 @@ std::vector<double> solve(std::vector<double> left, std::vector<double> mid, std
         B[i] = (left[i] - 2 * mid[i] + right[i]) * (dt / (R * C) - 1) + I[j][i] * dt / C ;
     }
     //print_matrix(A);
-    std::vector<double> s = solve_progon(A, B);
-    std::vector<double> check = check_solution(A, s, B);
+    row s = solve_progon(A, B);
+    row check = check_solution(A, s, B);
     for (int i = 0; i < check.size(); i++) {
         if (fabs(check[i]) > 1e-10)
             std::cout << "ERROR TOO BIG" << check[i] << std::endl;
@@ -103,8 +99,8 @@ void * calc(void *thread) {
     long t = (long) thread;
     int start_index = t * (X_SIZE / THREADS); 
     int end_index = (t != THREADS - 1)?(t + 1) * (X_SIZE / THREADS) - 1: X_SIZE - 1;
-    std::vector<std::vector<double> > local, next;
-    std::vector<double> zeros;
+    matrix local, next;
+    row zeros;
     for (int i = 0; i < Y_SIZE; i++) {
         zeros.push_back(0);
     }
@@ -138,7 +134,7 @@ void * calc(void *thread) {
                 next.push_back(solve(phi[i - 1], phi[i], phi[i + 1], i - start_index));
         }
         cur_time += dt;
-//        pthread_barrier_wait(&bar);
+        pthread_barrier_wait(&bar);
         for (int i = start_index; i <=end_index; i++) {
             phi[i] = next[i - start_index];
         }
