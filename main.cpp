@@ -15,9 +15,7 @@ pthread_barrier_t bar, syn;
 pthread_mutex_t lock;
 static double R = 10, C = 1e-6, dt, T;
 long long clock_time() {
-    struct timespec tp;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tp);
-    return (long long)(tp.tv_nsec + (long long)tp.tv_sec * 1000000000ll);
+    return time(NULL);
 }
 void print_matrix(const matrix &v) {
 
@@ -87,11 +85,11 @@ row solve(const row &left,const row &mid,const row &right, int j) {
     }
     //print_matrix(A);
     row s = solve_progon(A, B);
-    row check = check_solution(A, s, B);
+    /*row check = check_solution(A, s, B);
     for (int i = 0; i < check.size(); i++) {
         if (fabs(check[i]) > 1e-10)
             std::cout << "ERROR TOO BIG" << check[i] << std::endl;
-    }
+    }*/
     return s;
 }
 
@@ -104,8 +102,10 @@ void * calc(void *thread) {
     for (int i = 0; i < Y_SIZE; i++) {
         zeros.push_back(0);
     }
-    double cur_time = 0;
+    double cur_time = 0, a;
+	unsigned long long iters = 0;
     std::cout << "I am thread " << t << ". My start index: " << start_index << ". My end index: " << end_index << std::endl;
+    unsigned long long start = clock_time();
     while (cur_time < T) {
         /*if (start_index == 0) {
             local.push_back(zeros);
@@ -125,7 +125,9 @@ void * calc(void *thread) {
         }*/
         //print_matrix(local);
         //std::cout << local.size() << std::endl;
+        cur_time += dt;
         for (int i = start_index; i <= end_index; i ++) {
+			iters ++;
             if (i == start_index && start_index == 0) 
                 next.push_back(solve(zeros, phi[i], phi[i + 1], i - start_index));
             else if (i == end_index && end_index == X_SIZE - 1) 
@@ -137,10 +139,12 @@ void * calc(void *thread) {
         pthread_barrier_wait(&bar);
         for (int i = start_index; i <=end_index; i++) {
             phi[i] = next[i - start_index];
+			iters++;
         }
         next.clear();
         pthread_barrier_wait(&syn);
     }
+    std::cout << "It takes " << t << " " << iters << " " <<  (double)(clock_time() - start) << std::endl;
     pthread_exit(NULL);
 }
 
@@ -196,7 +200,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < THREADS; i++) {
         pthread_join(threads[i], NULL);
     }
-    std::cout << "It takes " << (double)(clock_time() - start) / 1e9 << std::endl;
+    std::cout << "It takes " << (clock_time() - start) << std::endl;
     /*for(int i = 0; i < A.size(); i++) {
         if(i - 1 >=0)
             A[i][i-1] = (double)rand() / RAND_MAX;
