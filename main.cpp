@@ -6,9 +6,13 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
+#include <utility>
 #include <fstream>
-
-std::ofstream out("data.out", std::ofstream::out | std::ofstream::trunc);
+#ifndef NOGNUPLOT
+    std::string data_file_name = "data.out";
+    std::ofstream out(data_file_name.c_str(), std::ofstream::out | std::ofstream::trunc);
+    std::vector<std::pair<int,int> > gnuplot_points;
+#endif
 typedef std::vector<std::vector<double> > matrix;
 typedef std::vector<double> row;
 std::vector<std::vector<double> > phi, I;
@@ -77,7 +81,6 @@ row solve(const row &left,const row &mid,const row &right, int j) {
     double pt, bt;
 	row B(size);
     matrix A(size, row(size));
-    //std::cout << left.size() << " " << mid.size() << " " << right.size() << std::endl;
     for(int i = 0; i < A.size(); i++) {
         if(i - 1 >=0)
             A[i][i-1] = 1;
@@ -95,14 +98,6 @@ row solve(const row &left,const row &mid,const row &right, int j) {
         B[i] = (-left[i] + 2 * mid[i] - right[i]) * dt /(R * C) + (pt - 2 * mid[i] + bt) + I[j][i] * dt/C;//(left[i] - 2 * mid[i] + right[i]) * (dt / (R * C) - 1) + I[j][i] * dt / C ;
     }
     row s = solve_progon(A, B);
-    /*print_matrix(A);
-    print_matrix(B);
-    print_matrix(s);*/
-    /*row check = check_solution(A, s, B);
-    for (int i = 0; i < check.size(); i++) {
-        if (fabs(check[i]) > 1e-10)
-            std::cout << "ERROR TOO BIG" << check[i] << std::endl;
-    }*/
     return s;
 }
 
@@ -116,6 +111,7 @@ void * calc(void *thread) {
         zeros.push_back(0);
     }
     double cur_time = 0, a;
+    int x, y;
 	unsigned long long iters = 0;
     std::cout << "I am thread " << t << ". My start index: " << start_index << ". My end index: " << end_index << std::endl;
 	row left_t, mid_t, right_t;
@@ -123,26 +119,33 @@ void * calc(void *thread) {
     while (cur_time < T) {
     //for(int i = 0; i < 3; i ++) {
         pthread_barrier_wait(&syn);
-		if ( start_index <= 1 && end_index >= 1)
-			out << cur_time << " " << phi[1][1] << std::endl;
-        for (int i = 0; i < phi.size(); i++) {
-			local[i] = phi[i];
-		}
+#ifndef NOGNUPLOT
+        if (t == 0) {
+            out << cur_time << " ";
+            for (int i = 0; i < gnuplot_points.size(); i++) {
+                x = gnuplot_points[i].first;
+                y = gnuplot_points[i].second;
+                if (x >= 0 && x < X_SIZE && y >=0 && y < Y_SIZE)
+                    out << phi[x][y] << " ";
+            }
+        }
+        out << std::endl;
+#endif
 		cur_time += dt;
         for (int i = start_index; i <= end_index; i ++) {
 			iters ++;
-			mid_t = local[i];
+			mid_t = phi[i];
             if (i == start_index && start_index == 0) {
 				left_t = zeros;
-				right_t = local[i+1];
+				right_t = phi[i+1];
 			}
             else if (i == end_index && end_index == X_SIZE - 1) {
-				left_t = local[i - 1];
+				left_t = phi[i - 1];
 				right_t = zeros;
 			}
             else {
-				left_t = local[i - 1];
-				right_t = local[i + 1];
+				left_t = phi[i - 1];
+				right_t = phi[i + 1];
 			}
 			next[i] = solve(left_t, mid_t, right_t, i);
         }
@@ -160,7 +163,7 @@ int main(int argc, char **argv) {
     int x_grid, y_grid;
     const char* short_options = "tpxy";
     int c;
-    T = 1;
+    T = atoi(argv[4]);
     dt = 1e-5;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -168,6 +171,15 @@ int main(int argc, char **argv) {
     x_grid = atoi(argv[1]);
     y_grid = atoi(argv[2]);
     num_threads = atoi(argv[3]);
+#ifndef NOGNUPLOT
+    int print_points = atoi(argv[5]);
+    std::cout << "Enter " << print_points << " nodes to print in format <m> <n>" << std::endl;
+    int x, y;
+    for(int i = 0; i < print_points; i++) {
+        std::cin >> x >> y;
+        gnuplot_points.push_back(std::make_pair(x, y));
+    }
+#endif
     THREADS = num_threads;
     time_to_modulate = 2;
     X_SIZE = x_grid;
@@ -186,15 +198,6 @@ int main(int argc, char **argv) {
     pthread_barrier_init(&val, NULL, THREADS);
     pthread_barrier_init(&syn, NULL, THREADS);
     pthread_mutex_init(&lock, NULL);
-    /*std::vector<std::vector<double> > A;
-    std::vector<double> B, X;
-    int size = atoi(argv[1]);;
-    A.resize(size);
-    for(int i = 0; i < A.size(); i++) {
-        A[i].resize(size);
-    }
-    B.resize(size);
-    */
     pthread_t *threads = new pthread_t[THREADS];
     unsigned long long start = clock_time();
     for (long i = 0; i < THREADS; i++) {
@@ -206,55 +209,17 @@ int main(int argc, char **argv) {
         pthread_join(threads[i], NULL);
     }
     std::cout << "It takes " << (clock_time() - start) << std::endl;
-    /*for(int i = 0; i < A.size(); i++) {
-        if(i - 1 >=0)
-            A[i][i-1] = (double)rand() / RAND_MAX;
-        A[i][i] = (double)rand() / RAND_MAX;
-        
-        if(i + 1 < A.size())
-            A[i][i+1] = (double)rand() / RAND_MAX;
-        B[i] = (double)rand() / RAND_MAX;
-        
+#ifndef NOGNUPLOT
+    std::ofstream gnuplot("cmd", std::ofstream::trunc | std::ofstream::out);
+    gnuplot << "plot ";
+    for (int i = 0; i < gnuplot_points.size(); i++) {
+        gnuplot << "\"" << data_file_name << "\" using 1:" << i + 2 << "with lines title \"phi" << gnuplot_points[i].first << "," << gnuplot_points[i].second << "\"";
+        if(i != gnuplot_points.size() - 1)
+            gnuplot << ",";
     }
-    //print_matrix(A);
-    //print_matrix(B);
-    X = solve_progon(A, B);
-    std::vector<double> check = check_solution(A,X,B);
-    for (int i = 0; i < check.size(); i++) {
-        if (fabs(check[i]) > 1e-10)
-            std::cout << "ERROR TOO BIG" << check[i] << std::endl;
-    }*/
-    //print_matrix(check_solution(A, X, B));
-    /*while (1) {
-        const struct option long_options[] = {
-            {"delta_t", required_argument, 0, 0},
-            {"threads", required_argument, 0, 0},
-            {"x_size", required_argument, 0, 0},
-            {"y_size", required_argument, 0, 0},
-            {NULL, 0, NULL, 0}
-        };
-        int index = 0;
-        c = getopt_long(argc, argv, "t:p:x:y:", long_options, &index);
-        if (c == -1)
-            break;
-        std::cout << c << " " << optarg << std::endl;
-        switch (c) {
-            case 't':
-                delta_t = atoi(optarg);
-                break;
-            case 'p':
-                num_threads = atoi(optarg);
-                break;
-            case 'x':
-                x_grid = atoi(optarg);
-                break;
-            case 'y':
-                y_grid = atoi(optarg);
-                break;
-        }
-    }
-    std::cout << delta_t << " " << num_threads << " " << x_grid << " " << y_grid<< std::endl;*/
-
+    gnuplot.close();
+    int res = system("gnuplot -persist cmd");
+#endif
     return 0;
 }
 
