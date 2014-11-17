@@ -14,17 +14,17 @@ typedef std::vector<double> row;
 std::vector<std::vector<double> > phi, I;
 std::vector<int> condition;
 static int THREADS, X_SIZE, Y_SIZE;
-pthread_barrier_t bar, syn;
+pthread_barrier_t bar, syn, val;
 pthread_mutex_t lock;
 static double R = 1, C = 1e-1, dt, T;
 long long clock_time() {
     return time(NULL);
 }
 void print_matrix(const matrix &v) {
-
+	int size = v.size();
     for(int i = 0; i < v.size(); i++) {
         for(int j = 0; j < v[i].size(); j++) {
-            std::cout << v[j][i] << " ";
+            std::cout << v[i][j] << " ";
         }
         std::cout << std::endl;
     }
@@ -75,7 +75,7 @@ row check_solution(const matrix &A , const row &X, const row &B) {
 row solve(const row &left,const row &mid,const row &right, int j) {
     int size = left.size();
     double pt, bt;
-    row B(size);
+	row B(size);
     matrix A(size, row(size));
     //std::cout << left.size() << " " << mid.size() << " " << right.size() << std::endl;
     for(int i = 0; i < A.size(); i++) {
@@ -110,7 +110,7 @@ void * calc(void *thread) {
     long t = (long) thread;
     int start_index = t * (X_SIZE / THREADS); 
     int end_index = (t != THREADS - 1)?(t + 1) * (X_SIZE / THREADS) - 1: X_SIZE - 1;
-    matrix local, next;
+    matrix local(phi.size()), next(phi.size());
     row zeros;
     for (int i = 0; i < Y_SIZE; i++) {
         zeros.push_back(0);
@@ -118,48 +118,39 @@ void * calc(void *thread) {
     double cur_time = 0, a;
 	unsigned long long iters = 0;
     std::cout << "I am thread " << t << ". My start index: " << start_index << ". My end index: " << end_index << std::endl;
+	row left_t, mid_t, right_t;
     unsigned long long start = clock_time();
     while (cur_time < T) {
-    //for(int i = 0; i < 20; i ++) {
-        //print_matrix(phi);
-        out << cur_time << " " << phi[1][1] << std::endl;
-        /*if (start_index == 0) {
-            local.push_back(zeros);
-        } else {
-            local.push_back(phi[start_index - 1]);
-        }
-        //pthread_mutex_lock(&lock);
-        for (int i = start_index; i <= end_index; i++) {
-            local.push_back(phi[i]);
-        }
-        //pthread_mutex_unlock(&lock);
-        if (end_index == X_SIZE - 1) {
-            local.push_back(zeros);
-        }
-        else {
-            local.push_back(phi[end_index + 1]);
-        }*/
-        //print_matrix(local);
-        //std::cout << local.size() << std::endl;
-        cur_time += dt;
+    //for(int i = 0; i < 3; i ++) {
+        pthread_barrier_wait(&syn);
+		if ( start_index <= 1 && end_index >= 1)
+			out << cur_time << " " << phi[1][1] << std::endl;
+        for (int i = 0; i < phi.size(); i++) {
+			local[i] = phi[i];
+		}
+		cur_time += dt;
         for (int i = start_index; i <= end_index; i ++) {
 			iters ++;
-            if (i == start_index && start_index == 0) 
-                next.push_back(solve(zeros, phi[i], phi[i + 1], i - start_index));
-            else if (i == end_index && end_index == X_SIZE - 1) 
-                next.push_back(solve(phi[i - 1], phi[i], zeros, i - start_index));
-            else 
-                next.push_back(solve(phi[i - 1], phi[i], phi[i + 1], i - start_index));
+			mid_t = local[i];
+            if (i == start_index && start_index == 0) {
+				left_t = zeros;
+				right_t = local[i+1];
+			}
+            else if (i == end_index && end_index == X_SIZE - 1) {
+				left_t = local[i - 1];
+				right_t = zeros;
+			}
+            else {
+				left_t = local[i - 1];
+				right_t = local[i + 1];
+			}
+			next[i] = solve(left_t, mid_t, right_t, i);
         }
         pthread_barrier_wait(&bar);
         for (int i = start_index; i <=end_index; i++) {
-            phi[i] = next[i - start_index];
-			iters++;
+            phi[i] = next[i];
         }
-        next.clear();
-        pthread_barrier_wait(&syn);
     }
-    std::cout << "It takes " << t << " " << iters << " " <<  (double)(clock_time() - start) << std::endl;
     pthread_exit(NULL);
 }
 
@@ -169,7 +160,7 @@ int main(int argc, char **argv) {
     int x_grid, y_grid;
     const char* short_options = "tpxy";
     int c;
-    T = 20;
+    T = 1;
     dt = 1e-5;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -191,6 +182,8 @@ int main(int argc, char **argv) {
     }
     I[1][1] = 1;
     I[0][1] = -1;
+    pthread_barrier_init(&bar, NULL, THREADS);
+    pthread_barrier_init(&val, NULL, THREADS);
     pthread_barrier_init(&syn, NULL, THREADS);
     pthread_mutex_init(&lock, NULL);
     /*std::vector<std::vector<double> > A;
@@ -202,7 +195,6 @@ int main(int argc, char **argv) {
     }
     B.resize(size);
     */
-    pthread_barrier_init(&bar, NULL, THREADS);
     pthread_t *threads = new pthread_t[THREADS];
     unsigned long long start = clock_time();
     for (long i = 0; i < THREADS; i++) {
