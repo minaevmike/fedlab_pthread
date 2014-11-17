@@ -191,9 +191,11 @@ int main(int argc, char **argv) {
     I.resize(x_grid);
     for(int i = 0; i < I.size(); i++) {
         I[i].resize(y_grid);
+		for(int j = 0; j < y_grid; j++)
+			I[i][j] = 0;// rand() % 6 - 3;
     }
-    I[1][1] = 1;
-    I[0][1] = -1;
+   // I[1][1] = 1;
+   // I[0][1] = -1;
     pthread_barrier_init(&bar, NULL, THREADS);
     pthread_barrier_init(&val, NULL, THREADS);
     pthread_barrier_init(&syn, NULL, THREADS);
