@@ -8,8 +8,10 @@
 #include <time.h>
 #include <utility>
 #include <fstream>
+#include <sstream>
 #ifndef NOGNUPLOT
     std::string data_file_name = "data.out";
+    std::ofstream gnuplot("cmd", std::ofstream::trunc | std::ofstream::out);
     std::ofstream out(data_file_name.c_str(), std::ofstream::out | std::ofstream::trunc);
     std::vector<std::pair<int,int> > gnuplot_points;
 #endif
@@ -20,7 +22,7 @@ std::vector<int> condition;
 static int THREADS, X_SIZE, Y_SIZE;
 pthread_barrier_t bar, syn, val;
 pthread_mutex_t lock;
-static double R = 1, C = 1e-1, dt, T;
+static double R = 1, C = 1e-3, dt, T;
 long long clock_time() {
     return time(NULL);
 }
@@ -105,34 +107,57 @@ void * calc(void *thread) {
     long t = (long) thread;
     int start_index = t * (X_SIZE / THREADS); 
     int end_index = (t != THREADS - 1)?(t + 1) * (X_SIZE / THREADS) - 1: X_SIZE - 1;
-    matrix local(phi.size()), next(phi.size());
+    matrix local(phi.size()), next(phi.size(),row(phi[0].size()));
     row zeros;
     for (int i = 0; i < Y_SIZE; i++) {
         zeros.push_back(0);
     }
-    double cur_time = 0, a;
+    double cur_time = 0, a = 0;
     int x, y;
+    int counter = 0;
 	unsigned long long iters = 0;
     std::cout << "I am thread " << t << ". My start index: " << start_index << ". My end index: " << end_index << std::endl;
 	row left_t, mid_t, right_t;
     unsigned long long start = clock_time();
+    double mid, right, left, top, bot;
     while (cur_time < T) {
     //for(int i = 0; i < 3; i ++) {
         pthread_barrier_wait(&syn);
 #ifndef NOGNUPLOT
         if (t == 0) {
-            out << cur_time << " ";
+		if (cur_time > (double) T / 4)
+			I[25][25] = 0;
+		if (cur_time - a > 1e-2) {
+			
+			a = cur_time;
+			std::stringstream convert;
+			convert << counter;
+			std::string num = convert.str();
+			std::ofstream file((data_file_name + num).c_str(), std::ofstream::out|std::ofstream::trunc);
+			for (int i = 0; i < phi.size(); i++) {
+				for(int j = 0; j < phi[i].size(); j++) {
+					file << i << " " << j << " " << phi[i][j] << std::endl;
+				}
+			}
+			file.close();
+			counter ++;
+			gnuplot << "splot \"" << data_file_name + num << "\"" << "with lines title \"phi\"\n";
+		       gnuplot << "pause 0.1" << std::endl;	
+		}
+	}
+            /*out << cur_time << " ";
             for (int i = 0; i < gnuplot_points.size(); i++) {
                 x = gnuplot_points[i].first;
                 y = gnuplot_points[i].second;
                 if (x >= 0 && x < X_SIZE && y >=0 && y < Y_SIZE)
                     out << phi[x][y] << " ";
             }
+		}
         }
-        out << std::endl;
+        out << std::endl;*/
 #endif
 		cur_time += dt;
-        for (int i = start_index; i <= end_index; i ++) {
+        /*for (int i = start_index; i <= end_index; i ++) {
 			iters ++;
 			mid_t = phi[i];
             if (i == start_index && start_index == 0) {
@@ -146,9 +171,19 @@ void * calc(void *thread) {
             else {
 				left_t = phi[i - 1];
 				right_t = phi[i + 1];
+			}*/
+		for(int i = start_index; i <= end_index; i++){ 
+			for(int j = 0; j < phi[i].size(); j++){
+				mid = phi[i][j];
+				top = j == 0 ? 0:phi[i][j-1];
+				bot = j == Y_SIZE - 1  ? 0 : phi[i][j+1];
+				left = i == start_index && start_index ==0 ? 0 : phi[i-1][j];
+				right = i == end_index && end_index == X_SIZE - 1 ? 0 :phi[i+1][j];
+				next[i][j] = mid + (top+ bot + left + right - 4 * mid) * dt / (R * C) + I[i][j] * dt /C;
 			}
-			next[i] = solve(left_t, mid_t, right_t, i);
-        }
+		}
+			//next[i] = solve(left_t, mid_t, right_t, i);
+        //}
         pthread_barrier_wait(&bar);
         for (int i = start_index; i <=end_index; i++) {
             phi[i] = next[i];
@@ -164,7 +199,7 @@ int main(int argc, char **argv) {
     const char* short_options = "tpxy";
     int c;
     T = atoi(argv[4]);
-    dt = 1e-5;
+    dt = 1e-6;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
@@ -172,13 +207,13 @@ int main(int argc, char **argv) {
     y_grid = atoi(argv[2]);
     num_threads = atoi(argv[3]);
 #ifndef NOGNUPLOT
-    int print_points = atoi(argv[5]);
+    /*int print_points = atoi(argv[5]);
     std::cout << "Enter " << print_points << " nodes to print in format <m> <n>" << std::endl;
     int x, y;
     for(int i = 0; i < print_points; i++) {
         std::cin >> x >> y;
         gnuplot_points.push_back(std::make_pair(x, y));
-    }
+    }*/
 #endif
     THREADS = num_threads;
     time_to_modulate = 2;
@@ -192,8 +227,16 @@ int main(int argc, char **argv) {
     for(int i = 0; i < I.size(); i++) {
         I[i].resize(y_grid);
 		for(int j = 0; j < y_grid; j++)
-			I[i][j] = 0;// rand() % 6 - 3;
+			I[i][j] =  0;//rand() % 6 - 3;
     }
+    I[25][25] = 2;
+#ifndef NOGNUPLOT
+    gnuplot << "set size ratio 1\n";
+    gnuplot << "set hidden3d\n";
+    gnuplot << "set dgrid 50,50\n";
+	gnuplot << "set zrange [-3: 3]\n";
+    //int res = system("gnuplot -persist cmd");
+#endif
    // I[1][1] = 1;
    // I[0][1] = -1;
     pthread_barrier_init(&bar, NULL, THREADS);
@@ -211,17 +254,5 @@ int main(int argc, char **argv) {
         pthread_join(threads[i], NULL);
     }
     std::cout << "It takes " << (clock_time() - start) << std::endl;
-#ifndef NOGNUPLOT
-    std::ofstream gnuplot("cmd", std::ofstream::trunc | std::ofstream::out);
-    gnuplot << "plot ";
-    for (int i = 0; i < gnuplot_points.size(); i++) {
-        gnuplot << "\"" << data_file_name << "\" using 1:" << i + 2 << "with lines title \"phi" << gnuplot_points[i].first << "," << gnuplot_points[i].second << "\"";
-        if(i != gnuplot_points.size() - 1)
-            gnuplot << ",";
-    }
-    gnuplot.close();
-    int res = system("gnuplot -persist cmd");
-#endif
     return 0;
 }
-
